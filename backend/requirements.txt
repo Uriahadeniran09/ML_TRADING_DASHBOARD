@@ -1,0 +1,47 @@
+# FastAPI Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Data Processing
+numpy==1.26.3
+pandas==2.1.4
+scikit-learn==1.4.0
+
+# ML/Deep Learning (for LSTM, GRU models)
+tensorflow==2.15.0
+# torch==2.1.2  # Uncomment if using PyTorch
+
+# Time Series Analysis
+statsmodels==0.14.1
+
+# Financial Data APIs
+yfinance==0.2.35
+# polygon-api-client==1.12.0  # Uncomment when ready
+# alpha-vantage==2.3.1  # Uncomment when ready
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9  # PostgreSQL adapter
+redis==5.0.1
+
+# HTTP Requests
+httpx==0.26.0
+requests==2.31.0
+
+# CORS Middleware
+python-multipart==0.0.6
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Portfolio Optimization
+PyPortfolioOpt==1.5.5
+
+# Data Validation & Serialization
+orjson==3.9.12
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
