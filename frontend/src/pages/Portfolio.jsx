@@ -148,14 +148,6 @@ function Portfolio() {
         holding={selectedHolding}
         isLoading={sellMutation.isPending}
       />
-          setSelectedSymbol(null);
-          setSelectedHolding(null);
-        }}
-        onSell={handleSell}
-        portfolio={portfolio}
-        symbol={selectedSymbol}
-        holding={selectedHolding}
-      />
 
       {/* Loading Overlay */}
       {(buyMutation.isPending || sellMutation.isPending) && (
