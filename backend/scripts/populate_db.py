@@ -16,7 +16,7 @@ from database.db import SessionLocal, init_db
 from database.crud import add_stock_price, get_or_create_stock
 from services.data_fetcher import get_historical_data
 from config.stocks import get_all_stocks, is_valid_symbol
-from database.models import Stock, StockPrice
+from database.db_models import Stock, StockPrice
 from sqlalchemy import func
 
 

@@ -7,9 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # Get database URL from environment (Docker sets this)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/trading_db")
-
-# Create database engine (echo=False to disable SQL logging)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/trading_db")# Create database engine (echo=False to disable SQL logging)
 engine = create_engine(DATABASE_URL, echo=False)
 
 # Create session factory
@@ -33,5 +31,5 @@ def init_db():
     Initialize database - create all tables
     Call this on app startup
     """
-    from .models import Base
+    from .db_models import Base
     Base.metadata.create_all(bind=engine)

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-DAILY UPDATE SCRIPT - Keeps database current (run daily via cron)
+DAILY UPDATE SCRIPT - Keeps database current (run daily via cron or scheduler)
 - Checks for new trading day data (runs after market close 4:30 PM ET)
 - Adds today's prices if not already in database
 - Prevents duplicate entries by checking latest DB date first
 - Run with: docker exec ml_trading_backend python scripts/daily_update.py
 - Uses: database/crud.py to save, services/data_fetcher.py to fetch
+- Can also be called from services/scheduler.py for automated runs
 """
 import sys
 import os
@@ -13,12 +14,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime
 import time
+import logging
 from database.db import SessionLocal, init_db
 from database.crud import add_stock_price, get_or_create_stock
 from services.data_fetcher import get_historical_data
 from config.stocks import get_all_stocks
-from database.models import Stock, StockPrice
+from database.db_models import Stock, StockPrice
 from sqlalchemy import func
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 
 def get_latest_db_date(db, symbol: str):
@@ -74,25 +79,67 @@ def update_stock(symbol: str, name: str = None):
         db.close()
 
 
+def run_daily_update():
+    """
+    Main function to run daily stock price update.
+    Can be called from:
+    - Scheduler (services/scheduler.py)
+    - Command line (python scripts/daily_update.py)
+    - API endpoint (for manual triggering)
+    
+    Returns:
+        dict: Summary of update results
+    """
+    try:
+        init_db()
+        
+        stocks = [(s["symbol"], s["name"]) for s in get_all_stocks()]
+        updated = 0
+        failed = []
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+        message = f"{timestamp} - Checking {len(stocks)} stocks"
+        print(message)
+        logger.info(message)
+        
+        for symbol, name in stocks:
+            success, result = update_stock(symbol, name)
+            
+            if success and result != "current":
+                msg = f"  {symbol}: added {result}"
+                print(msg)
+                logger.info(msg)
+                updated += 1
+            elif not success:
+                msg = f"  {symbol}: ERROR - {result}"
+                print(msg)
+                logger.error(msg)
+                failed.append(symbol)
+            
+            time.sleep(15)  # Rate limit
+        
+        result_msg = f"Done: {updated} updated, {len(stocks) - updated - len(failed)} current, {len(failed)} failed"
+        print(result_msg)
+        logger.info(result_msg)
+        
+        return {
+            "success": True,
+            "timestamp": timestamp,
+            "updated": updated,
+            "current": len(stocks) - updated - len(failed),
+            "failed": len(failed),
+            "failed_symbols": failed
+        }
+        
+    except Exception as e:
+        error_msg = f"Daily update failed: {str(e)}"
+        print(error_msg)
+        logger.error(error_msg, exc_info=True)
+        return {
+            "success": False,
+            "error": error_msg
+        }
+
+
 if __name__ == "__main__":
-    init_db()
-    
-    stocks = [(s["symbol"], s["name"]) for s in get_all_stocks()]
-    updated = 0
-    failed = []
-    
-    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M')} - Checking {len(stocks)} stocks")
-    
-    for symbol, name in stocks:
-        success, result = update_stock(symbol, name)
-        
-        if success and result != "current":
-            print(f"  {symbol}: added {result}")
-            updated += 1
-        elif not success:
-            print(f"  {symbol}: ERROR - {result}")
-            failed.append(symbol)
-        
-        time.sleep(15)  # Rate limit
-    
-    print(f"Done: {updated} updated, {len(stocks) - updated - len(failed)} current, {len(failed)} failed")
+    run_daily_update()

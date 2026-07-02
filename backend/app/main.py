@@ -1,36 +1,86 @@
 """
-FASTAPI MAIN - REST API endpoints for frontend
-- GET /api/stocks - list available stocks (from config)
-- GET /api/sectors - list all sectors
-- GET /api/price?symbol=AAPL - current price (cache → DB → API)
-- GET /api/history?symbol=AAPL&period=1mo - historical data (cache → DB → API)
-- Smart data fetching: checks cache first, then database, then external API
-- Returns "source" field so you know where data came from
+FASTAPI MAIN - Central API server
+- Initializes FastAPI app with CORS
+- Includes modular routers for different features
+- Defines core endpoints (stocks, price, history)
+- Manages background scheduler for daily updates
 """
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import sys
 import os
+import logging
+import secrets
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.data_fetcher import get_current_price, get_historical_data
 from services.cache import get_cache, set_cache
+from services.scheduler import (
+    init_scheduler,
+    stop_scheduler,
+    get_scheduler_status,
+    trigger_daily_update_now,
+    trigger_daily_update_background,
+)
 from database.db import get_db, init_db
 from database.crud import get_latest_price, get_stock_prices
 from config.stocks import get_all_stocks, get_stock_by_symbol, get_all_sectors, is_valid_symbol
 from datetime import datetime, timedelta
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Import routers
+from app.api import predictions, portfolio, risk
+
 app = FastAPI(title="ML Trading Dashboard API", version="1.0.0")
 
-# Initialize database on startup
+
+def _is_valid_cron_request(authorization: str = None, x_cron_secret: str = None) -> bool:
+    """Validate cron secret if CRON_SECRET is configured."""
+    expected_secret = os.getenv("CRON_SECRET")
+
+    # If secret is not configured, allow request for local/dev convenience.
+    if not expected_secret:
+        return True
+
+    bearer_secret = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer_secret = authorization.replace("Bearer ", "", 1).strip()
+
+    candidates = [s for s in [x_cron_secret, bearer_secret] if s]
+    return any(secrets.compare_digest(candidate, expected_secret) for candidate in candidates)
+
+# Initialize database and scheduler on startup
 @app.on_event("startup")
 async def startup_event():
     """Run when the app starts"""
-    print("Starting ML Trading Dashboard API...")
+    logger.info("=" * 60)
+    logger.info("Starting ML Trading Dashboard API...")
+    logger.info("=" * 60)
+    
+    # Initialize database
     init_db()
-    print("Ready to accept requests!")
+    logger.info("✓ Database initialized")
+    
+    # Initialize scheduler for daily updates
+    init_scheduler()
+    logger.info("✓ Scheduler initialized")
+    logger.info("=" * 60)
+    logger.info("Ready to accept requests!")
+    logger.info("=" * 60)
+
+
+# Shutdown event to stop scheduler
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run when the app shuts down"""
+    logger.info("Shutting down scheduler...")
+    stop_scheduler()
+    logger.info("✓ Scheduler stopped")
 
 # CORS - allows frontend to call this API
 app.add_middleware(
@@ -40,6 +90,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include modular routers
+app.include_router(predictions.router)
+app.include_router(portfolio.router)
+app.include_router(risk.router)
 
 @app.get("/")
 async def root():
@@ -228,7 +283,72 @@ async def get_history(symbol: str, period: str = "1mo", db: Session = Depends(ge
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# TODO: We'll build these endpoints next
-# @app.get("/api/prediction")
-# @app.get("/api/risk")
-# @app.post("/api/portfolio/optimize")
+# ============================================================================
+# SCHEDULER MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/api/scheduler/status")
+async def scheduler_status():
+    """
+    Get the current status of the daily update scheduler.
+    
+    Returns information about:
+    - Whether scheduler is running
+    - Scheduled jobs
+    - Next run time
+    """
+    return get_scheduler_status()
+
+
+@app.post("/api/scheduler/update-now")
+async def trigger_update_now():
+    """
+    Manually trigger a daily stock price update immediately.
+    
+    Useful for:
+    - Testing the update process
+    - Forcing an update outside of scheduled time
+    - Verifying recent data
+    
+    Returns:
+    - Success status
+    - Number of stocks updated
+    - Any errors encountered
+    """
+    logger.info("[API] Manual daily update triggered")
+    result = trigger_daily_update_now()
+    return result
+
+
+@app.api_route("/api/cron/daily-update", methods=["GET", "POST"])
+async def cron_daily_update(
+    authorization: str = Header(default=None),
+    x_cron_secret: str = Header(default=None),
+):
+    """
+    External cron endpoint for daily update.
+
+    Configure CRON_SECRET and send it via either:
+    - Authorization: Bearer <CRON_SECRET>
+    - X-Cron-Secret: <CRON_SECRET>
+    """
+    if not _is_valid_cron_request(authorization=authorization, x_cron_secret=x_cron_secret):
+        raise HTTPException(status_code=401, detail="Invalid cron secret")
+
+    logger.info("[CRON] Daily update trigger received")
+    return trigger_daily_update_background(trigger="cron-endpoint")
+
+
+@app.get("/api/health")
+async def health_check():
+    """
+    Extended health check including scheduler status.
+    """
+    scheduler_info = get_scheduler_status()
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "scheduler": scheduler_info
+    }
+
+

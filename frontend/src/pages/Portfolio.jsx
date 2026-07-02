@@ -37,10 +37,12 @@ function Portfolio() {
   const handleBuy = (buyData) => {
     buyMutation.mutate(buyData, {
       onSuccess: () => {
-        // Modal will close automatically
+        setShowBuyModal(false);
+        setSelectedSymbol(null);
       },
       onError: (error) => {
-        alert(`Error buying stock: ${error.message}`);
+        const errorMsg = error?.message || 'Unknown error';
+        alert(`Error buying stock: ${errorMsg}`);
       },
     });
   };
@@ -48,10 +50,13 @@ function Portfolio() {
   const handleSell = (sellData) => {
     sellMutation.mutate(sellData, {
       onSuccess: () => {
-        // Modal will close automatically
+        setShowSellModal(false);
+        setSelectedSymbol(null);
+        setSelectedHolding(null);
       },
       onError: (error) => {
-        alert(`Error selling stock: ${error.message}`);
+        const errorMsg = error?.message || 'Unknown error';
+        alert(`Error selling stock: ${errorMsg}`);
       },
     });
   };
@@ -127,12 +132,22 @@ function Portfolio() {
         onBuy={handleBuy}
         portfolio={portfolio}
         preselectedSymbol={selectedSymbol}
+        isLoading={buyMutation.isPending}
       />
 
       <SellStockModal
         isOpen={showSellModal}
         onClose={() => {
           setShowSellModal(false);
+          setSelectedSymbol(null);
+          setSelectedHolding(null);
+        }}
+        onSell={handleSell}
+        portfolio={portfolio}
+        symbol={selectedSymbol}
+        holding={selectedHolding}
+        isLoading={sellMutation.isPending}
+      />
           setSelectedSymbol(null);
           setSelectedHolding(null);
         }}

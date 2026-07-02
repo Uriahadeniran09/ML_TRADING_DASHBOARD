@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, TrendingDown, AlertCircle } from 'lucide-react';
+import { X, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 import { stocksApi } from '../services/api';
 
-function SellStockModal({ isOpen, onClose, onSell, portfolio, symbol, holding }) {
+function SellStockModal({ isOpen, onClose, onSell, portfolio, symbol, holding, isLoading = false }) {
   const [inputMode, setInputMode] = useState('shares'); // 'shares' or 'amount'
   const [amount, setAmount] = useState('');
   const [shares, setShares] = useState('');
@@ -18,7 +18,7 @@ function SellStockModal({ isOpen, onClose, onSell, portfolio, symbol, holding })
       stocksApi
         .getCurrentPrice(symbol)
         .then((data) => {
-          setCurrentPrice(data.price);
+          setCurrentPrice(data.data?.close || 0);
           setLoadingPrice(false);
         })
         .catch((err) => {
@@ -58,7 +58,7 @@ function SellStockModal({ isOpen, onClose, onSell, portfolio, symbol, holding })
     };
 
     onSell(sellData);
-    handleClose();
+    // Don't close modal here - let parent handle it after mutation completes
   };
 
   const handleClose = () => {
@@ -284,10 +284,11 @@ function SellStockModal({ isOpen, onClose, onSell, portfolio, symbol, holding })
             </button>
             <button
               type="submit"
-              disabled={!isValid}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium transition-colors"
+              disabled={!isValid || isLoading}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
             >
-              Sell {symbol}
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading ? 'Processing...' : `Sell ${symbol}`}
             </button>
           </div>
         </form>

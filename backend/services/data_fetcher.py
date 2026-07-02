@@ -116,10 +116,25 @@ def get_historical_data(symbol: str, period: str = "1mo") -> dict:
                 "response": data
             }
         
-        results = data.get("results", [])
+        # Collect all results from all pages
+        all_results = []
+        while True:
+            results = data.get("results", [])
+            all_results.extend(results)
+            
+            # Check if there are more pages
+            next_url = data.get("next_url")
+            if not next_url:
+                break
+            
+            # Fetch next page
+            response = requests.get(next_url, params={"apiKey": POLYGON_API_KEY}, timeout=10)
+            data = response.json()
+            if data.get("status") == "ERROR":
+                break
         
         data_list = []
-        for item in results:
+        for item in all_results:
             timestamp_ms = item.get("t")
             date = datetime.fromtimestamp(timestamp_ms / 1000).strftime('%Y-%m-%d')
             

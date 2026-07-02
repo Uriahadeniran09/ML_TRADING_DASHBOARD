@@ -56,7 +56,11 @@ logs/
 *.h5
 *.pkl
 *.joblib
+*.keras
 models/checkpoints/
+
+# Documentation
+*.md
 
 # Data files
 data/*.csv

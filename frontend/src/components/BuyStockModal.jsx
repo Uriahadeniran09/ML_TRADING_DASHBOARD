@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, DollarSign, TrendingUp, AlertCircle } from 'lucide-react';
+import { X, DollarSign, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
 import { useStocks } from '../hooks/useStocks';
 import { stocksApi } from '../services/api';
 
-function BuyStockModal({ isOpen, onClose, onBuy, portfolio, preselectedSymbol = null }) {
+function BuyStockModal({ isOpen, onClose, onBuy, portfolio, preselectedSymbol = null, isLoading = false }) {
   const [selectedStock, setSelectedStock] = useState(preselectedSymbol || '');
   const [inputMode, setInputMode] = useState('amount'); // 'amount' or 'shares'
   const [amount, setAmount] = useState('');
@@ -23,7 +23,7 @@ function BuyStockModal({ isOpen, onClose, onBuy, portfolio, preselectedSymbol = 
       stocksApi
         .getCurrentPrice(selectedStock)
         .then((data) => {
-          setCurrentPrice(data.price);
+          setCurrentPrice(data.data?.close || 0);
           setLoadingPrice(false);
         })
         .catch((err) => {
@@ -55,7 +55,7 @@ function BuyStockModal({ isOpen, onClose, onBuy, portfolio, preselectedSymbol = 
     };
 
     onBuy(buyData);
-    handleClose();
+    // Don't close modal here - let parent handle it after mutation completes
   };
 
   const handleClose = () => {
@@ -255,10 +255,11 @@ function BuyStockModal({ isOpen, onClose, onBuy, portfolio, preselectedSymbol = 
             </button>
             <button
               type="submit"
-              disabled={!isValid}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium transition-colors"
+              disabled={!isValid || isLoading}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
             >
-              Buy {selectedStock || 'Stock'}
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading ? 'Processing...' : `Buy ${selectedStock || 'Stock'}`}
             </button>
           </div>
         </form>
