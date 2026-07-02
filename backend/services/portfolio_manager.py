@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database.db_models import Portfolio, PortfolioHolding, Transaction, Stock, StockPrice
+from config.stocks import get_stock_by_symbol
 
 
 def create_portfolio(db: Session, user_id: str, name: str = "My Portfolio") -> Portfolio:
@@ -35,6 +36,28 @@ def create_portfolio(db: Session, user_id: str, name: str = "My Portfolio") -> P
     db.commit()
     db.refresh(portfolio)
     return portfolio
+
+
+def _resolve_stock(db: Session, stock_symbol: str) -> Optional[Stock]:
+    """
+    Get a stock from the database, or create it from the static stock registry
+    if it is one of the tracked symbols.
+    """
+    symbol = stock_symbol.upper()
+
+    stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+    if stock:
+        return stock
+
+    stock_info = get_stock_by_symbol(symbol)
+    if not stock_info:
+        return None
+
+    stock = Stock(symbol=stock_info["symbol"], name=stock_info["name"])
+    db.add(stock)
+    db.commit()
+    db.refresh(stock)
+    return stock
 
 
 def buy_stock(db: Session, portfolio_id: int, stock_symbol: str, 
@@ -75,8 +98,8 @@ def buy_stock(db: Session, portfolio_id: int, stock_symbol: str,
     if not portfolio:
         return {"success": False, "error": "Portfolio not found"}
     
-    # Get stock
-    stock = db.query(Stock).filter(Stock.symbol == stock_symbol).first()
+    # Get stock (create it from the tracked stock registry if missing)
+    stock = _resolve_stock(db, stock_symbol)
     if not stock:
         return {"success": False, "error": f"Stock {stock_symbol} not found"}
     
@@ -206,8 +229,8 @@ def sell_stock(db: Session, portfolio_id: int, stock_symbol: str,
     if not portfolio:
         return {"success": False, "error": "Portfolio not found"}
     
-    # Get stock
-    stock = db.query(Stock).filter(Stock.symbol == stock_symbol).first()
+    # Get stock (create it from the tracked stock registry if missing)
+    stock = _resolve_stock(db, stock_symbol)
     if not stock:
         return {"success": False, "error": f"Stock {stock_symbol} not found"}
     
