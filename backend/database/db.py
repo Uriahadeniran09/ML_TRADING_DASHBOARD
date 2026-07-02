@@ -6,8 +6,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Get database URL from environment (Docker sets this)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/trading_db")# Create database engine (echo=False to disable SQL logging)
+# Get database URL from environment.
+# Local development should set DATABASE_URL explicitly instead of relying on a fallback.
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Configure your production database connection string "
+        "in the deployment environment (for example, Neon or Render Postgres)."
+    )
+
+# Create database engine (echo=False to disable SQL logging)
 engine = create_engine(DATABASE_URL, echo=False)
 
 # Create session factory
