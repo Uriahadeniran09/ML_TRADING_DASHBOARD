@@ -114,59 +114,8 @@ def get_portfolio_by_user(user_id: str, db: Session = Depends(get_db)):
         # If no portfolio exists, create one
         if not portfolio:
             portfolio = create_portfolio(db, user_id, "My Portfolio")
-        
-        # Get holdings
-        holdings = db.query(PortfolioHolding).filter(
-            PortfolioHolding.portfolio_id == portfolio.id
-        ).all()
-        
-        # Get current prices for holdings
-        holdings_data = []
-        for holding in holdings:
-            stock = holding.stock
-            latest_price = db.query(StockPrice).filter(
-                StockPrice.stock_id == stock.id
-            ).order_by(StockPrice.date.desc()).first()
-            
-            current_price = latest_price.close if latest_price else holding.average_cost
-            current_value = holding.shares * current_price
-            gain_loss = current_value - (holding.shares * holding.average_cost)
-            gain_loss_pct = (gain_loss / (holding.shares * holding.average_cost) * 100) if holding.average_cost > 0 else 0
-            
-            holdings_data.append({
-                "id": holding.id,
-                "symbol": stock.symbol,
-                "name": stock.name,
-                "shares": holding.shares,
-                "average_cost": round(holding.average_cost, 2),
-                "current_price": round(current_price, 2),
-                "current_value": round(current_value, 2),
-                "gain_loss": round(gain_loss, 2),
-                "gain_loss_pct": round(gain_loss_pct, 2),
-            })
-        
-        # Calculate portfolio totals
-        total_value = sum([h["current_value"] for h in holdings_data])
-        total_cost = sum([h["shares"] * h["average_cost"] for h in holdings_data])
-        portfolio_gain_loss = total_value - total_cost
-        portfolio_gain_loss_pct = (portfolio_gain_loss / total_cost * 100) if total_cost > 0 else 0
-        
-        return {
-            "portfolio": {
-                "id": portfolio.id,
-                "user_id": portfolio.user_id,
-                "name": portfolio.name,
-                "cash_balance": round(portfolio.cash_balance, 2),
-                "total_invested": round(portfolio.total_invested, 2),
-                "total_stock_value": round(total_value, 2),
-                "portfolio_value": round(portfolio.cash_balance + total_value, 2),
-                "gain_loss": round(portfolio_gain_loss, 2),
-                "gain_loss_pct": round(portfolio_gain_loss_pct, 2),
-                "created_at": str(portfolio.created_at)
-            },
-            "holdings": holdings_data,
-            "success": True
-        }
+
+        return get_portfolio_summary(db, portfolio.id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -186,59 +135,8 @@ def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
         portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
-        
-        # Get holdings
-        holdings = db.query(PortfolioHolding).filter(
-            PortfolioHolding.portfolio_id == portfolio.id
-        ).all()
-        
-        # Get current prices for holdings
-        holdings_data = []
-        for holding in holdings:
-            stock = holding.stock
-            latest_price = db.query(StockPrice).filter(
-                StockPrice.stock_id == stock.id
-            ).order_by(StockPrice.date.desc()).first()
-            
-            current_price = latest_price.close if latest_price else holding.average_cost
-            current_value = holding.shares * current_price
-            gain_loss = current_value - (holding.shares * holding.average_cost)
-            gain_loss_pct = (gain_loss / (holding.shares * holding.average_cost) * 100) if holding.average_cost > 0 else 0
-            
-            holdings_data.append({
-                "id": holding.id,
-                "symbol": stock.symbol,
-                "name": stock.name,
-                "shares": holding.shares,
-                "average_cost": round(holding.average_cost, 2),
-                "current_price": round(current_price, 2),
-                "current_value": round(current_value, 2),
-                "gain_loss": round(gain_loss, 2),
-                "gain_loss_pct": round(gain_loss_pct, 2),
-            })
-        
-        # Calculate portfolio totals
-        total_value = sum([h["current_value"] for h in holdings_data])
-        total_cost = sum([h["shares"] * h["average_cost"] for h in holdings_data])
-        portfolio_gain_loss = total_value - total_cost
-        portfolio_gain_loss_pct = (portfolio_gain_loss / total_cost * 100) if total_cost > 0 else 0
-        
-        return {
-            "portfolio": {
-                "id": portfolio.id,
-                "user_id": portfolio.user_id,
-                "name": portfolio.name,
-                "cash_balance": round(portfolio.cash_balance, 2),
-                "total_invested": round(portfolio.total_invested, 2),
-                "total_stock_value": round(total_value, 2),
-                "portfolio_value": round(portfolio.cash_balance + total_value, 2),
-                "gain_loss": round(portfolio_gain_loss, 2),
-                "gain_loss_pct": round(portfolio_gain_loss_pct, 2),
-                "created_at": str(portfolio.created_at)
-            },
-            "holdings": holdings_data,
-            "success": True
-        }
+
+        return get_portfolio_summary(db, portfolio.id)
     except HTTPException:
         raise
     except Exception as e:

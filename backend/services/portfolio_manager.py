@@ -8,7 +8,9 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database.db_models import Portfolio, PortfolioHolding, Transaction, Stock, StockPrice
+from database.crud import add_stock_price
 from config.stocks import get_stock_by_symbol
+from services.data_fetcher import get_current_price
 
 
 def create_portfolio(db: Session, user_id: str, name: str = "My Portfolio") -> Portfolio:
@@ -60,6 +62,50 @@ def _resolve_stock(db: Session, stock_symbol: str) -> Optional[Stock]:
     return stock
 
 
+def _get_current_stock_price(db: Session, stock: Stock) -> Optional[float]:
+    """
+    Return the latest stored daily price for a stock.
+
+    If the database has no usable price row, fall back to Polygon and store
+    the fetched daily price back into the database so the portfolio view is
+    never empty.
+    """
+    latest_price = db.query(StockPrice).filter(
+        StockPrice.stock_id == stock.id
+    ).order_by(StockPrice.date.desc()).first()
+
+    if latest_price and latest_price.close and latest_price.close > 0:
+        return latest_price.close
+
+    api_data = get_current_price(stock.symbol)
+    if api_data.get("status") == "success":
+        api_close = float(api_data.get("close") or 0)
+        if api_close > 0:
+            try:
+                price_date = datetime.strptime(api_data.get("date"), "%Y-%m-%d").date()
+            except Exception:
+                price_date = datetime.utcnow().date()
+
+            try:
+                add_stock_price(
+                    db=db,
+                    symbol=stock.symbol,
+                    date=datetime.combine(price_date, datetime.min.time()),
+                    open_price=float(api_data.get("open") or api_close),
+                    high=float(api_data.get("high") or api_close),
+                    low=float(api_data.get("low") or api_close),
+                    close=api_close,
+                    volume=int(api_data.get("volume") or 0),
+                )
+            except Exception:
+                # The price can still be used even if the cache write fails.
+                pass
+
+            return api_close
+
+    return None
+
+
 def buy_stock(db: Session, portfolio_id: int, stock_symbol: str, 
               shares: Optional[float] = None, amount: Optional[float] = None) -> Dict:
     """
@@ -103,15 +149,9 @@ def buy_stock(db: Session, portfolio_id: int, stock_symbol: str,
     if not stock:
         return {"success": False, "error": f"Stock {stock_symbol} not found"}
     
-    # Get latest stock price
-    latest_price = db.query(StockPrice).filter(
-        StockPrice.stock_id == stock.id
-    ).order_by(StockPrice.date.desc()).first()
-    
-    if not latest_price:
+    price_per_share = _get_current_stock_price(db, stock)
+    if not price_per_share or price_per_share <= 0:
         return {"success": False, "error": f"No price data for {stock_symbol}"}
-    
-    price_per_share = latest_price.close
     
     # Calculate shares and total cost based on what user provided
     if amount is not None:
@@ -243,12 +283,9 @@ def sell_stock(db: Session, portfolio_id: int, stock_symbol: str,
     if not holding:
         return {"success": False, "error": f"You don't own any {stock_symbol}"}
     
-    # Get latest stock price
-    latest_price = db.query(StockPrice).filter(
-        StockPrice.stock_id == stock.id
-    ).order_by(StockPrice.date.desc()).first()
-    
-    price_per_share = latest_price.close
+    price_per_share = _get_current_stock_price(db, stock)
+    if not price_per_share or price_per_share <= 0:
+        return {"success": False, "error": f"No price data for {stock_symbol}"}
     
     # Calculate shares to sell based on what user provided
     if amount is not None:
@@ -345,31 +382,28 @@ def get_portfolio_summary(db: Session, portfolio_id: int) -> Dict:
     total_market_value = 0.0
     
     for holding in holdings:
-        # Get latest price
-        latest_price = db.query(StockPrice).filter(
-            StockPrice.stock_id == holding.stock_id
-        ).order_by(StockPrice.date.desc()).first()
-        
-        if latest_price:
-            current_price = latest_price.close
-            market_value = holding.shares * current_price
-            cost_basis = holding.shares * holding.average_cost
-            profit_loss = market_value - cost_basis
-            profit_loss_percent = (profit_loss / cost_basis) * 100 if cost_basis > 0 else 0
-            
-            total_market_value += market_value
-            
-            holdings_data.append({
-                "symbol": holding.stock.symbol,
-                "name": holding.stock.name,
-                "shares": holding.shares,
-                "average_cost": holding.average_cost,
-                "current_price": current_price,
-                "market_value": market_value,
-                "cost_basis": cost_basis,
-                "profit_loss": profit_loss,
-                "profit_loss_percent": profit_loss_percent
-            })
+        current_price = _get_current_stock_price(db, holding.stock)
+        if not current_price or current_price <= 0:
+            current_price = holding.average_cost
+
+        market_value = holding.shares * current_price
+        cost_basis = holding.shares * holding.average_cost
+        profit_loss = market_value - cost_basis
+        profit_loss_percent = (profit_loss / cost_basis) * 100 if cost_basis > 0 else 0
+
+        total_market_value += market_value
+
+        holdings_data.append({
+            "symbol": holding.stock.symbol,
+            "name": holding.stock.name,
+            "shares": holding.shares,
+            "average_cost": holding.average_cost,
+            "current_price": current_price,
+            "market_value": market_value,
+            "cost_basis": cost_basis,
+            "profit_loss": profit_loss,
+            "profit_loss_percent": profit_loss_percent
+        })
     
     # Calculate total portfolio value
     total_value = portfolio.cash_balance + total_market_value
