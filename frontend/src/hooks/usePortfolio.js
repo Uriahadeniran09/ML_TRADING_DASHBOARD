@@ -1,6 +1,32 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { portfolioApi, riskApi } from '../services/api';
 
+const normalizePortfolioResponse = (data) => {
+  const apiPortfolio = data?.portfolio || {};
+  const apiHoldings = data?.holdings || [];
+
+  const holdings = apiHoldings.map((holding) => ({
+    ...holding,
+    current_price: holding.current_price ?? holding.price ?? holding.average_cost ?? 0,
+    market_value: holding.market_value ?? holding.current_value ?? 0,
+    profit_loss: holding.profit_loss ?? holding.gain_loss ?? 0,
+    profit_loss_percent: holding.profit_loss_percent ?? holding.gain_loss_pct ?? 0,
+  }));
+
+  return {
+    ...data,
+    portfolio: {
+      ...apiPortfolio,
+      total_value: apiPortfolio.total_value ?? apiPortfolio.portfolio_value ?? 0,
+      total_return: apiPortfolio.total_return ?? apiPortfolio.gain_loss ?? 0,
+      total_return_percent: apiPortfolio.total_return_percent ?? apiPortfolio.gain_loss_pct ?? 0,
+      invested_value: apiPortfolio.invested_value ?? apiPortfolio.total_invested ?? 0,
+      number_of_holdings: apiPortfolio.number_of_holdings ?? holdings.length,
+    },
+    holdings,
+  };
+};
+
 // Hook to get or create portfolio for a user
 export const usePortfolio = (userId = 'default_user') => {
   const queryClient = useQueryClient();
@@ -11,12 +37,12 @@ export const usePortfolio = (userId = 'default_user') => {
     queryFn: async () => {
       try {
         const result = await portfolioApi.getPortfolioByUser(userId);
-        return result;
+        return normalizePortfolioResponse(result);
       } catch (err) {
         // If portfolio doesn't exist, create one
         if (err.message.includes('not found') || err.message.includes('No portfolio found')) {
           const newPortfolio = await portfolioApi.createPortfolio(userId, 'My Portfolio');
-          return newPortfolio;
+          return normalizePortfolioResponse(newPortfolio);
         }
         throw err;
       }
