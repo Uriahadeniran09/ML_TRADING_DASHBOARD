@@ -100,14 +100,21 @@ if __name__ == "__main__":
     failed_stocks = []
     skipped_stocks = []
     
-    # Check which stocks already have data
-    db = SessionLocal()
-    existing_data = db.query(
-        Stock.symbol,
-        func.count(StockPrice.id).label('count')
-    ).outerjoin(StockPrice).group_by(Stock.id, Stock.symbol).all()
-    existing_stocks = {stock.symbol: stock.count for stock in existing_data}
-    db.close()
+    # Check which stocks already have data.
+    # If the database connection drops mid-run, rerunning the script will
+    # skip anything already inserted and continue from the missing symbols.
+    def load_existing_stock_counts():
+        db = SessionLocal()
+        try:
+            existing_data = db.query(
+                Stock.symbol,
+                func.count(StockPrice.id).label('count')
+            ).outerjoin(StockPrice).group_by(Stock.id, Stock.symbol).all()
+            return {stock.symbol: stock.count for stock in existing_data}
+        finally:
+            db.close()
+
+    existing_stocks = load_existing_stock_counts()
     
     print(f"\n🚀 Processing {len(symbols)} stocks...\n")
     
@@ -119,10 +126,21 @@ if __name__ == "__main__":
             continue
             
         print(f"[{i}/{len(symbols)}] {symbol}...", end=" ")
-        if populate_stock_data(symbol, name, period, delay=15):
-            success_count += 1
-        else:
+        try:
+            if populate_stock_data(symbol, name, period, delay=15):
+                success_count += 1
+            else:
+                failed_stocks.append(symbol)
+        except Exception as e:
+            # Treat unexpected disconnects as a retryable failure. The next
+            # run will continue from the missing stocks.
+            print(f"  ❌ {symbol}: unexpected error - {str(e)}")
             failed_stocks.append(symbol)
+            break
+
+        # Refresh the skip list after each successful stock so a restart can
+        # continue from where it left off.
+        existing_stocks[symbol] = existing_stocks.get(symbol, 0) + 1
     
     elapsed = (time.time() - start_time) / 60
     print(f"\n{'='*60}")

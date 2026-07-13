@@ -17,7 +17,14 @@ if not DATABASE_URL:
     )
 
 # Create database engine (echo=False to disable SQL logging)
-engine = create_engine(DATABASE_URL, echo=False)
+# pool_pre_ping and pool_recycle help long-running seed jobs survive
+# transient Neon / pooler disconnects.
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
