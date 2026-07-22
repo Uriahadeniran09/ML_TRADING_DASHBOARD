@@ -6,6 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Get database URL from environment.
 # Local development should set DATABASE_URL explicitly instead of relying on a fallback.
 DATABASE_URL = os.getenv("DATABASE_URL")

@@ -1,0 +1,31 @@
+name: Daily Database Update
+
+on:
+  schedule:
+    - cron: "0 12 * * *"  # Runs every day at 12:00 UTC
+  workflow_dispatch:      # Allows you to manually run it
+
+jobs:
+  update-db:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/scripts/requirements.txt
+
+      - name: Run daily update
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+        run: |
+          python backend/scripts/daily_update.py

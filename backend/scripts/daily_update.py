@@ -80,6 +80,23 @@ def update_stock(symbol: str, name: str = None):
 
 
 def run_daily_update():
+    print("STARTING UPDATE")
+
+    try:
+        print("Initializing DB...")
+        init_db()
+
+        print("DB initialized")
+
+        stocks = [(s["symbol"], s["name"]) for s in get_all_stocks()]
+
+        print(f"Loaded {len(stocks)} stocks")
+
+        # keep the rest of your original code here
+
+    except Exception as e:
+        print(f"ERROR: {e}")
+        raise
     """
     Main function to run daily stock price update.
     Can be called from:
